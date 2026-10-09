@@ -1,4 +1,9 @@
-const totalFrames = 900;
+// --- 1. ثوابت وإعدادات المحاكاة والـ AI Math ---
+const totalFrames = 1023; // تم التحديث حسب بيانات الفيديو الخاصة بك
+const FPS = 30.0;
+const videoDuration = 34.1;
+
+// عناصر واجهة المستخدم للمحاكاة
 const slider = document.getElementById('frame-slider');
 const playBtn = document.getElementById('play-btn');
 const playIcon = document.getElementById('play-icon');
@@ -9,32 +14,49 @@ const percentVal = document.getElementById('percent-val');
 const distVal = document.getElementById('dist-val');
 const potholeCountEl = document.getElementById('pothole-count');
 
-// Route State (Math Variables)
+// تحديث الـ Slider ليتوافق مع الفريمات الحقيقية للفيديو
+if (slider) slider.max = totalFrames;
+
+// متغيرات المسار
 let airportRoute = [];
 let cumulativeDistances = [0];
 let totalHighwayDistance = 0;
 let plannedPolyline, traveledPolyline, carMarker;
-let startMarker, endMarker; // تعريف الـ draggable markers
+let startMarker, endMarker;
 let timer = null;
 
-// حولنا الإحداثيات لـ let عشان نقدر نعدلها
+// إحداثيات البداية والنهاية (شارع المطار - عمان)
 let pointA = [31.9440, 35.8570];
 let pointB = [31.7224, 35.9860];
 
-// Map Initialization
+// --- 2. بيانات الـ AI الفعلية من الفيديو ---
+const aiDetections = [
+    { track_id: 4, frame_number: 237, timestamp_seconds: 7.867, confidence: 0.7627 },
+    { track_id: 5, frame_number: 213, timestamp_seconds: 7.067, confidence: 0.4923 },
+    { track_id: 7, frame_number: 219, timestamp_seconds: 7.267, confidence: 0.5636 },
+    { track_id: 9, frame_number: 228, timestamp_seconds: 7.567, confidence: 0.6140 },
+    { track_id: 17, frame_number: 325, timestamp_seconds: 10.800, confidence: 0.4416 },
+    { track_id: 20, frame_number: 386, timestamp_seconds: 12.833, confidence: 0.4409 },
+    { track_id: 21, frame_number: 399, timestamp_seconds: 13.267, confidence: 0.4925 },
+    { track_id: 25, frame_number: 533, timestamp_seconds: 17.733, confidence: 0.7627 },
+    { track_id: 27, frame_number: 560, timestamp_seconds: 18.633, confidence: 0.5097 },
+    { track_id: 34, frame_number: 859, timestamp_seconds: 28.600, confidence: 0.4674 }
+];
+
+// --- 3. تهيئة الخريطة الأساسية ---
 const map = L.map('map', {
     zoomControl: false
 }).setView([31.8300, 35.8800], 12);
 
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    subdomains: ['a', 'b', 'c'],
+    crossOrigin: true,
     attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// دالة سحب المسار (قابلة لإعادة الاستخدام لما نغير النقاط)
+// --- 4. جلب ورسم المسار من OSRM ---
 async function fetchAndRenderRoute() {
     try {
         const url = `https://router.project-osrm.org/route/v1/driving/${pointA[1]},${pointA[0]};${pointB[1]},${pointB[0]}?overview=full&geometries=geojson`;
@@ -44,36 +66,32 @@ async function fetchAndRenderRoute() {
         airportRoute = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
         
         recalculateMathAndRender();
-        
+        spawnAIPotholesOnRoute(); // زرع الحفر المكتشفة على الشارع
+
         const loadingScreen = document.getElementById('loading-screen');
-        if(loadingScreen) {
+        if (loadingScreen) {
             loadingScreen.style.opacity = '0';
             setTimeout(() => loadingScreen.style.display = 'none', 500);
         }
 
-        slider.disabled = false;
-        playBtn.disabled = false;
-        resetBtn.disabled = false;
-
+        if (slider) slider.disabled = false;
+        if (playBtn) playBtn.disabled = false;
+        if (resetBtn) resetBtn.disabled = false;
     } catch (error) {
         console.error("Route Fetch Error:", error);
     }
 }
 
-// قلب الـ Logic الرياضي وحساب المسافات
 function recalculateMathAndRender() {
-    // 1. تصفير العدادات والمسافات القديمة
     totalHighwayDistance = 0;
     cumulativeDistances = [0];
 
-    // 2. إعادة الحساب الدقيق بناءً على المسار الجديد
     for (let i = 0; i < airportRoute.length - 1; i++) {
         const segDist = map.distance(airportRoute[i], airportRoute[i + 1]);
         totalHighwayDistance += segDist;
         cumulativeDistances.push(totalHighwayDistance);
     }
 
-    // 3. تحديث خطوط الرسم (Polylines)
     if (!plannedPolyline) {
         plannedPolyline = L.polyline(airportRoute, { color: '#64748b', weight: 6, dashArray: '8, 10', opacity: 0.7 }).addTo(map);
         traveledPolyline = L.polyline([airportRoute[0]], { color: '#2563eb', weight: 7, opacity: 0.95, lineCap: 'round' }).addTo(map);
@@ -82,12 +100,10 @@ function recalculateMathAndRender() {
         traveledPolyline.setLatLngs([airportRoute[0]]);
     }
 
-    // 4. تهيئة الـ Draggable Markers لأول مرة
     if (!startMarker) {
         startMarker = L.marker(pointA, { draggable: true, zIndexOffset: 1000 }).addTo(map).bindPopup("<b>نقطة البداية (اسحبني)</b>");
         endMarker = L.marker(pointB, { draggable: true, zIndexOffset: 1000 }).addTo(map).bindPopup("<b>نقطة النهاية (اسحبني)</b>");
 
-        // Event Listeners للـ Dragging
         startMarker.on('dragend', function (e) {
             pointA = [e.target.getLatLng().lat, e.target.getLatLng().lng];
             handleRouteUpdate();
@@ -99,11 +115,12 @@ function recalculateMathAndRender() {
         });
     }
 
-    // 5. تهيئة أو إعادة تعيين سيارة المحاكاة
     if (!carMarker) {
         const carIcon = L.divIcon({
             html: `<div class="car-marker-container"><div class="car-pulse"></div><div class="car-icon-body">🚘</div></div>`,
-            className: 'car-icon-wrapper', iconSize: [38, 38], iconAnchor: [19, 19]
+            className: 'car-icon-wrapper',
+            iconSize: [38, 38],
+            iconAnchor: [19, 19]
         });
         carMarker = L.marker(airportRoute[0], { icon: carIcon, zIndexOffset: 2000 }).addTo(map);
     } else {
@@ -113,22 +130,20 @@ function recalculateMathAndRender() {
     resetSimulationUI();
 }
 
-// هاندلر لما تتغير النقاط
 function handleRouteUpdate() {
-    if (timer) togglePlay(); // وقف المحاكاة إذا شغالة
-    slider.value = 0; // رجع الـ slider للصفر
-    fetchAndRenderRoute(); // اسحب المسار الجديد واحسب الـ Math
+    if (timer) togglePlay();
+    if (slider) slider.value = 0;
+    fetchAndRenderRoute();
 }
 
 function resetSimulationUI() {
-    slider.value = 0;
-    frameVal.innerText = `0 / ${totalFrames}`;
-    percentVal.innerText = `0%`;
-    distVal.innerText = `0 م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
+    if (slider) slider.value = 0;
+    if (frameVal) frameVal.innerText = `0 / ${totalFrames}`;
+    if (percentVal) percentVal.innerText = `0%`;
+    if (distVal) distVal.innerText = `0 م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
     map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
 }
 
-// Interpolation Logic
 function getPositionAtProgress(progress) {
     if (!airportRoute.length) return { position: pointA, path: [] };
     const targetDist = progress * totalHighwayDistance;
@@ -153,6 +168,55 @@ function getPositionAtProgress(progress) {
     return { position: airportRoute[airportRoute.length - 1], path: airportRoute };
 }
 
+// --- 5. إسقاط بيانات الـ AI الدقيقة على المسار ---
+let activePotholesCount = 0;
+
+function spawnAIPotholesOnRoute() {
+    // إزالة الحفر القديمة إذا تم إعادة رسم المسار
+    map.eachLayer((layer) => {
+        if (layer.options && layer.options.isAIPothole) {
+            map.removeLayer(layer);
+        }
+    });
+    activePotholesCount = 0;
+
+    aiDetections.forEach(item => {
+        const progress = item.frame_number / totalFrames; // حساب مكان الحفرة على المسار
+        const { position } = getPositionAtProgress(progress);
+        
+        let colorClass = 'green';
+        let severityText = 'منخفض';
+        if (item.confidence >= 0.7) { colorClass = 'red'; severityText = 'عالي الخطر'; }
+        else if (item.confidence >= 0.5) { colorClass = 'orange'; severityText = 'متوسط'; }
+
+        const alertIcon = L.divIcon({
+            html: `<div class="alert-marker ${colorClass}">⚠️</div>`,
+            className: 'custom-alert-icon',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+        });
+
+        const popupHTML = `
+            <div class="popup-card">
+                <span class="popup-badge" style="background: ${item.confidence >= 0.7 ? '#fee2e2' : '#fffbeb'}">مستوى الخطر: ${severityText}</span>
+                <div class="popup-title">تتبع AI رقم #${item.track_id}</div>
+                <div class="popup-desc">دقة الموديل: ${(item.confidence * 100).toFixed(1)}%</div>
+                <div class="popup-desc">تم الرصد عند الثانية ${item.timestamp_seconds}s</div>
+            </div>
+        `;
+
+        const marker = L.marker(position, { 
+            icon: alertIcon,
+            isAIPothole: true 
+        }).addTo(map).bindPopup(popupHTML);
+
+        activePotholesCount++;
+    });
+
+    if (potholeCountEl) potholeCountEl.innerText = `${activePotholesCount} عوائق`;
+}
+
+// --- 6. المحاكاة والـ Slider ---
 function updateSimulation(frame) {
     if (!airportRoute.length) return;
     const safeFrame = Math.max(0, Math.min(frame, totalFrames));
@@ -165,15 +229,23 @@ function updateSimulation(frame) {
     if (timer) map.panTo(position, { animate: true, duration: 0.1 });
 
     const distanceCovered = progress * totalHighwayDistance;
-    frameVal.innerText = `${safeFrame} / ${totalFrames}`;
-    percentVal.innerText = `${Math.round(progress * 100)}%`;
-    distVal.innerText = `${Math.round(distanceCovered).toLocaleString()} م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
+    const frameInput = document.getElementById('frame-input');
+if (frameInput) frameInput.value = safeFrame;
+    if (percentVal) percentVal.innerText = `${Math.round(progress * 100)}%`;
+    if (distVal) distVal.innerText = `${Math.round(distanceCovered).toLocaleString()} م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
+
+    // التحذير الصوتي اللحظي عند اقتراب السيارة من فريم الحفرة
+    aiDetections.forEach(hole => {
+        const frameDiff = hole.frame_number - safeFrame;
+        // إذا السيارة قريبة جدا (ضمن 15 فريم قبل الحفرة)
+        if (frameDiff > 0 && frameDiff <= 15) {
+            triggerAudioAlert();
+        }
+    });
 }
-
-// Events
-slider.addEventListener('input', function() { updateSimulation(parseInt(this.value, 10)); });
-
+//sdfsfdsfsfds
 function togglePlay() {
+    if (!playBtn) return;
     if (timer) {
         clearInterval(timer);
         timer = null;
@@ -188,54 +260,132 @@ function togglePlay() {
         timer = setInterval(() => {
             let cur = parseInt(slider.value, 10);
             if (cur >= totalFrames) cur = 0;
-            else cur = Math.min(totalFrames, cur + 3);
-            
+            // غيرنا الرقم هنا من (cur + 3) إلى (cur + 1) عشان تمشي السيارة بهدوء إطار بإطار
+            else cur = Math.min(totalFrames, cur + 1); 
+
             slider.value = cur;
             updateSimulation(cur);
             if (cur >= totalFrames) togglePlay();
-        }, 40);
+        }, 33); // 33 ملي ثانية = سرعة 30FPS الحقيقية للفيديو (حركة واقعية جداً)
     }
-}
-
-playBtn.addEventListener('click', togglePlay);
-
-resetBtn.addEventListener('click', () => {
+}//sdfdsfdf
+if (slider) slider.addEventListener('input', function() { updateSimulation(parseInt(this.value, 10)); });
+if (playBtn) playBtn.addEventListener('click', togglePlay);
+if (resetBtn) resetBtn.addEventListener('click', () => {
     if (timer) togglePlay();
-    slider.value = 0;
+    if (slider) slider.value = 0;
     updateSimulation(0);
     map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
 });
 
-// APIs
-async function loadBackendPotholes() {
+function triggerAudioAlert() {
     try {
-        const response = await fetch('/api/potholes');
-        const result = await response.json();
-        if (result.success && Array.isArray(result.data)) {
-            potholeCountEl.innerText = `${result.data.length} عوائق`;
-            renderPotholeMarkers(result.data);
-        }
-    } catch (err) {
-        console.warn('API error, using dummy data.');
-    }
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.25);
+    } catch(e) {}
 }
 
-function renderPotholeMarkers(items) {
-    items.forEach(item => {
-        const potholeIcon = L.divIcon({
-            html: '<div class="pothole-icon-wrapper">⚠️</div>',
-            className: 'custom-pothole-icon', iconSize: [28, 28], iconAnchor: [14, 14]
+// --- 7. أداة التنبيهات اليدوية (Draggable Alert Tool) ---
+const addAlertBtn = document.getElementById('add-alert-btn');
+const alertPanel = document.getElementById('alert-panel');
+let isPlacingAlert = false;
+let selectedSeverityColor = '';
+let selectedSeverityText = '';
+
+if (addAlertBtn && alertPanel) {
+    // فتح / إغلاق القائمة
+    addAlertBtn.addEventListener('click', () => {
+        alertPanel.classList.toggle('hidden');
+    });
+
+    // اختيار مستوى الخطر من القائمة
+    document.querySelectorAll('.severity-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const severity = e.target.dataset.severity; // low, medium, high
+            
+            if (severity === 'low') { selectedSeverityColor = 'green'; selectedSeverityText = 'منخفض الخطر'; }
+            else if (severity === 'medium') { selectedSeverityColor = 'orange'; selectedSeverityText = 'متوسط الخطر'; }
+            else if (severity === 'high') { selectedSeverityColor = 'red'; selectedSeverityText = 'شديد الخطورة'; }
+
+            alertPanel.classList.add('hidden');
+            isPlacingAlert = true;
+            document.getElementById('map').style.cursor = 'crosshair';
+            alert(`الآن اضغط على أي مكان بالخريطة لإضافة التنبيه اليدوي.`);
         });
-        L.marker([item.lat, item.lng], { icon: potholeIcon }).addTo(map).bindPopup(`
-            <div class="popup-card">
-                <span class="popup-badge">${item.severity === 'Severe' ? 'خطورة عالية' : 'متوسط'}</span>
-                <div class="popup-title">${item.incidentType || 'حفرة طريق'} - ${item.id}</div>
-                <div class="popup-desc">📍 ${item.address}</div>
-                <div class="popup-desc">الحالة: <b>${item.status}</b></div>
-            </div>
-        `);
     });
 }
 
-fetchAndRenderRoute();
-loadBackendPotholes();
+// رسم الماركر اليدوي عند الضغط على الخريطة
+map.on('click', function(e) {
+    if (!isPlacingAlert) return;
+
+    const alertIcon = L.divIcon({
+        html: `<div class="alert-marker ${selectedSeverityColor}">❗</div>`,
+        className: 'custom-alert-icon',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+    });
+
+    // تفعيل خاصية الـ Draggable
+    const manualMarker = L.marker(e.latlng, { 
+        icon: alertIcon,
+        draggable: true // تمكين السحب والإفلات
+    }).addTo(map);
+
+    const popupContent = `
+        <div class="popup-card">
+            <span class="popup-badge" style="background:#fffbeb;">رصد يدوي (قابل للسحب)</span>
+            <div class="popup-title">مستوى الخطر: ${selectedSeverityText}</div>
+            <div class="popup-desc" id="coords-${manualMarker._leaflet_id}">الإحداثيات: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}</div>
+        </div>
+    `;
+    manualMarker.bindPopup(popupContent).openPopup();
+
+    // تحديث الإحداثيات مباشرة عند سحب الماركر
+    manualMarker.on('dragend', function(event) {
+        const newPos = event.target.getLatLng();
+        const coordsText = document.getElementById(`coords-${manualMarker._leaflet_id}`);
+        if(coordsText) {
+            coordsText.innerText = `الإحداثيات: ${newPos.lat.toFixed(4)}, ${newPos.lng.toFixed(4)}`;
+        }
+    });
+
+    // إعادة وضع الخريطة الطبيعي
+    isPlacingAlert = false;
+    document.getElementById('map').style.cursor = '';
+    
+    activePotholesCount++;
+    if (potholeCountEl) potholeCountEl.innerText = `${activePotholesCount} عوائق`;
+});
+
+// بدء التشغيل عند تحميل الصفحة
+window.onload = () => {
+    fetchAndRenderRoute();
+};
+
+
+// ميزة الانتقال المباشر للفريم (Frame Jump)
+const frameInput = document.getElementById('frame-input');
+if (frameInput) {
+    frameInput.addEventListener('change', function() {
+        let targetFrame = parseInt(this.value, 10);
+        if (isNaN(targetFrame)) targetFrame = 0;
+        
+        // منع إدخال رقم أكبر من الفريمات أو أقل من 0
+        targetFrame = Math.max(0, Math.min(targetFrame, totalFrames));
+        
+        this.value = targetFrame; // تحديث الرقم جوا الـ input
+        if (slider) slider.value = targetFrame; // تحديث الـ slider
+        updateSimulation(targetFrame); // تحريك السيارة فوراً
+    });
+}

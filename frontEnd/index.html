@@ -21,6 +21,15 @@
         <div id="loading-text">جاري سحب مسار الشارع الفعلي من الأقمار الصناعية...</div>
     </div>
 
+    <div id="alert-tool" class="alert-tool">
+        <button id="add-alert-btn" class="add-alert-btn" type="button">＋ إضافة تنبيه</button>
+        <div id="alert-panel" class="alert-panel hidden" aria-label="اختر مستوى الخطر">
+            <button class="severity-btn green" data-severity="low" type="button">أخضر - منخفض</button>
+            <button class="severity-btn orange" data-severity="medium" type="button">برتقالي - متوسط</button>
+            <button class="severity-btn red" data-severity="high" type="button">أحمر - عالي</button>
+        </div>
+    </div>
+
     <!-- لوحة التحكم -->
     <div class="dashboard-panel">
         <div class="header-badge">
@@ -40,7 +49,10 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <span class="stat-label">الفريم الحالي</span>
-                <span class="stat-value" id="frame-val" style="color: #2563eb;">0 / 900</span>
+                <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
+    <input type="number" id="frame-input" min="0" max="1023" value="0" style="width:45px; border:1px solid #cbd5e1; border-radius:4px; text-align:center; font-weight:bold; color:#2563eb; font-size:11px; padding:2px; outline:none;">
+    <span style="font-size:11px; font-weight:bold; color:#64748b;">/ 1023</span>
+</div>
             </div>
             <div class="stat-card">
                 <span class="stat-label">الإنجاز</span>

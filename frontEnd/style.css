@@ -19,6 +19,99 @@ body, html {
     z-index: 1;
 }
 
+.alert-tool {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.add-alert-btn {
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: white;
+    font-family: inherit;
+    font-weight: 700;
+    padding: 12px 18px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.add-alert-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.24);
+}
+
+.alert-panel {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 180px;
+}
+
+.alert-panel.hidden {
+    display: none;
+}
+
+.severity-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.severity-btn:hover {
+    transform: translateY(-1px);
+    opacity: 0.96;
+}
+
+.severity-btn.green {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.severity-btn.orange {
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+}
+
+.severity-btn.red {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.custom-alert-icon {
+    background: transparent !important;
+    border: none !important;
+}
+
+.alert-marker {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    background: var(--alert-color, #22c55e);
+}
+
 /* Glassmorphism Side Panel */
 .dashboard-panel {
     position: absolute;
@@ -340,3 +433,6 @@ input[type="range"]::-webkit-slider-thumb:hover {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+
+.pin-red { background: #ef4444; } /* أحمر للحالات الخطرة جداً */
