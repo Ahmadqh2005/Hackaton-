@@ -1,14 +1,18 @@
-const express = require('express');
-const path = require('path');
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'frontEnd')));
 
-// In-Memory Database (Realistic Simulation Data)
+// In-Memory Database
 let potholes = [
     {
         id: "ANO-3426-456",
@@ -54,13 +58,10 @@ let municipalityReports = [
 ];
 
 // --- REST API Endpoints ---
-
-// 1. Get all potholes
 app.get('/api/potholes', (req, res) => {
     res.json({ success: true, count: potholes.length, data: potholes });
 });
 
-// 2. Add a new detected pothole
 app.post('/api/potholes', (req, res) => {
     const { address, lat, lng, severity, confidence, incidentType } = req.body;
 
@@ -92,7 +93,6 @@ app.post('/api/potholes', (req, res) => {
     res.status(201).json({ success: true, data: newPothole });
 });
 
-// 3. Add comment to a ticket
 app.post('/api/potholes/:id/comments', (req, res) => {
     const { id } = req.params;
     const { comment } = req.body;
@@ -106,14 +106,12 @@ app.post('/api/potholes/:id/comments', (req, res) => {
     res.json({ success: true, comments: pothole.comments });
 });
 
-// 4. Get Municipality Reports
 app.get('/api/reports', (req, res) => {
     res.json({ success: true, data: municipalityReports });
 });
 
-// Catch-all route compatible with Express v5
 app.use((req, res) => {
-    res.sendFile(path.join(__dirname, 'frontEnd/index.html'));
+    res.sendFile(path.join(__dirname, 'frontEnd', 'index.html'));
 });
 
 app.listen(PORT, () => {
