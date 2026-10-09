@@ -13,6 +13,8 @@ const frameVal = document.getElementById('frame-val');
 const percentVal = document.getElementById('percent-val');
 const distVal = document.getElementById('dist-val');
 const potholeCountEl = document.getElementById('pothole-count');
+const nextHoleDistEl = document.getElementById('next-hole-dist');
+const nextHoleCard = document.getElementById('next-hole-card');
 
 // تحديث الـ Slider ليتوافق مع الفريمات الحقيقية للفيديو
 if (slider) slider.max = totalFrames;
@@ -27,7 +29,7 @@ let timer = null;
 
 // إحداثيات البداية والنهاية (شارع المطار - عمان)
 let pointA = [31.9440, 35.8570];
-let pointB = [31.7224, 35.9860];
+let pointB = [31.8815, 35.8812];
 
 // --- 2. بيانات الـ AI الفعلية من الفيديو ---
 const aiDetections = [
@@ -42,6 +44,9 @@ const aiDetections = [
     { track_id: 27, frame_number: 560, timestamp_seconds: 18.633, confidence: 0.5097 },
     { track_id: 34, frame_number: 859, timestamp_seconds: 28.600, confidence: 0.4674 }
 ];
+
+// ترتيب الحفر زمنياً (حسب الفريم) لضمان دقة عمل العداد
+aiDetections.sort((a, b) => a.frame_number - b.frame_number);
 
 // --- 3. تهيئة الخريطة الأساسية ---
 const map = L.map('map', {
@@ -142,6 +147,7 @@ function resetSimulationUI() {
     if (percentVal) percentVal.innerText = `0%`;
     if (distVal) distVal.innerText = `0 م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
     map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
+    updateSimulation(0); // التهيئة لعرض المسافة لأول حفرة
 }
 
 function getPositionAtProgress(progress) {
@@ -230,20 +236,45 @@ function updateSimulation(frame) {
 
     const distanceCovered = progress * totalHighwayDistance;
     const frameInput = document.getElementById('frame-input');
-if (frameInput) frameInput.value = safeFrame;
+    if (frameInput) frameInput.value = safeFrame;
     if (percentVal) percentVal.innerText = `${Math.round(progress * 100)}%`;
     if (distVal) distVal.innerText = `${Math.round(distanceCovered).toLocaleString()} م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
 
-    // التحذير الصوتي اللحظي عند اقتراب السيارة من فريم الحفرة
+    // حساب المسافة لأقرب حفرة والتحكم بظهور الكارد
+    if (nextHoleDistEl && nextHoleCard) {
+        const nextHole = aiDetections.find(hole => hole.frame_number >= safeFrame);
+        
+        if (nextHole) {
+            const holeProgress = nextHole.frame_number / totalFrames;
+            const holeTotalDist = holeProgress * totalHighwayDistance;
+            
+            let distRemaining = holeTotalDist - distanceCovered;
+            distRemaining = Math.max(0, distRemaining);
+
+            // يظهر فقط لما تكون المسافة 200 متر أو أقل
+            if (distRemaining <= 200) {
+                nextHoleCard.style.display = "flex";
+                nextHoleDistEl.innerText = `${Math.round(distRemaining).toLocaleString()} متر (تتبع #${nextHole.track_id})`;
+                nextHoleDistEl.style.color = "#e11d48";
+                nextHoleCard.style.backgroundColor = "#fff1f2";
+                nextHoleCard.style.borderColor = "#fecdd3";
+            } else {
+                nextHoleCard.style.display = "none";
+            }
+        } else {
+            nextHoleCard.style.display = "none";
+        }
+    }
+
+    // التنبيه الصوتي عند الاقتراب من الحفرة
     aiDetections.forEach(hole => {
         const frameDiff = hole.frame_number - safeFrame;
-        // إذا السيارة قريبة جدا (ضمن 15 فريم قبل الحفرة)
         if (frameDiff > 0 && frameDiff <= 15) {
             triggerAudioAlert();
         }
     });
 }
-//sdfsfdsfsfds
+
 function togglePlay() {
     if (!playBtn) return;
     if (timer) {
@@ -260,7 +291,7 @@ function togglePlay() {
         timer = setInterval(() => {
             let cur = parseInt(slider.value, 10);
             if (cur >= totalFrames) cur = 0;
-            // غيرنا الرقم هنا من (cur + 3) إلى (cur + 1) عشان تمشي السيارة بهدوء إطار بإطار
+            // يتم التحرك فريم واحد بسلاسة
             else cur = Math.min(totalFrames, cur + 1); 
 
             slider.value = cur;
@@ -268,7 +299,8 @@ function togglePlay() {
             if (cur >= totalFrames) togglePlay();
         }, 33); // 33 ملي ثانية = سرعة 30FPS الحقيقية للفيديو (حركة واقعية جداً)
     }
-}//sdfdsfdf
+}
+
 if (slider) slider.addEventListener('input', function() { updateSimulation(parseInt(this.value, 10)); });
 if (playBtn) playBtn.addEventListener('click', togglePlay);
 if (resetBtn) resetBtn.addEventListener('click', () => {
@@ -278,21 +310,39 @@ if (resetBtn) resetBtn.addEventListener('click', () => {
     map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
 });
 
+let audioCtx = null;
+let lastBeepTime = 0;
+
 function triggerAudioAlert() {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        // تعريف الـ AudioContext مرة وحدة بس لمنع الـ Lag
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // نظام Throttle لمنع تداخل الأصوات (تأخير 300ms)
+        const now = Date.now();
+        if (now - lastBeepTime < 300) return;
+        lastBeepTime = now;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.2);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.2);
+        
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(audioCtx.destination);
+        
         osc.start();
-        osc.stop(ctx.currentTime + 0.25);
-    } catch(e) {}
+        osc.stop(audioCtx.currentTime + 0.25);
+    } catch(e) {
+        console.error("Audio Error: ", e);
+    }
 }
 
 // --- 7. أداة التنبيهات اليدوية (Draggable Alert Tool) ---
@@ -372,7 +422,6 @@ map.on('click', function(e) {
 window.onload = () => {
     fetchAndRenderRoute();
 };
-
 
 // ميزة الانتقال المباشر للفريم (Frame Jump)
 const frameInput = document.getElementById('frame-input');

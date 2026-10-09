@@ -21,14 +21,7 @@
         <div id="loading-text">جاري سحب مسار الشارع الفعلي من الأقمار الصناعية...</div>
     </div>
 
-    <div id="alert-tool" class="alert-tool">
-        <button id="add-alert-btn" class="add-alert-btn" type="button">＋ إضافة تنبيه</button>
-        <div id="alert-panel" class="alert-panel hidden" aria-label="اختر مستوى الخطر">
-            <button class="severity-btn green" data-severity="low" type="button">أخضر - منخفض</button>
-            <button class="severity-btn orange" data-severity="medium" type="button">برتقالي - متوسط</button>
-            <button class="severity-btn red" data-severity="high" type="button">أحمر - عالي</button>
-        </div>
-    </div>
+    
 
     <!-- لوحة التحكم -->
     <div class="dashboard-panel">
@@ -47,12 +40,13 @@
         </div>
 
         <div class="stats-grid">
+            
             <div class="stat-card">
                 <span class="stat-label">الفريم الحالي</span>
                 <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
-    <input type="number" id="frame-input" min="0" max="1023" value="0" style="width:45px; border:1px solid #cbd5e1; border-radius:4px; text-align:center; font-weight:bold; color:#2563eb; font-size:11px; padding:2px; outline:none;">
-    <span style="font-size:11px; font-weight:bold; color:#64748b;">/ 1023</span>
-</div>
+                    <input type="number" id="frame-input" min="0" max="1023" value="0" style="width:45px; border:1px solid #cbd5e1; border-radius:4px; text-align:center; font-weight:bold; color:#2563eb; font-size:11px; padding:2px; outline:none;">
+                    <span style="font-size:11px; font-weight:bold; color:#64748b;">/ 1023</span>
+                </div>
             </div>
             <div class="stat-card">
                 <span class="stat-label">الإنجاز</span>
@@ -62,14 +56,19 @@
                 <span class="stat-label">المسافة المقطوعة / الكلية</span>
                 <span class="stat-value" id="dist-val" style="color: #1e293b;">0 متر / جاري الحساب...</span>
             </div>
+            <!-- بطاقة التنبيه بالمسافة لأقرب حفرة -->
+            <div class="stat-card full" id="next-hole-card" style="display: none; background: #fff1f2; border-color: #fecdd3; transition: all 0.3s ease;">
+    <span class="stat-label" style="color: #be123c;">المسافة لأقرب حفرة قادمة ⚠️</span>
+    <span class="stat-value" id="next-hole-dist" style="color: #e11d48; font-size: 1.15rem;">جاري الحساب...</span>
+</div>
         </div>
 
         <div class="slider-section">
             <div class="slider-header">
                 <span>بداية المسار (0)</span>
-                <span>نهاية المسار (900)</span>
+                <span>نهاية المسار (1023)</span>
             </div>
-            <input type="range" id="frame-slider" min="0" max="900" value="0" disabled>
+            <input type="range" id="frame-slider" min="0" max="1023" value="0" disabled>
         </div>
 
         <div class="controls-row">

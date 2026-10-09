@@ -436,3 +436,79 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 
 .pin-red { background: #ef4444; } /* أحمر للحالات الخطرة جداً */
+
+
+/* ... existing code ... */
+@keyframes spin {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+
+.pin-red { background: #ef4444; } /* أحمر للحالات الخطرة جداً */
+
+/* STREAMING_CHUNK:Styling the flashing warning card /
+/ تأثير الوميض التحذيري للمسافة القريبة جداً */
+@keyframes flash-critical {
+0% { background-color: #fff1f2 !important; border-color: #fecdd3 !important; }
+50% { background-color: #ef4444 !important; border-color: #991b1b !important; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6) !important;}
+100% { background-color: #fff1f2 !important; border-color: #fecdd3 !important; }
+}
+
+.critical-warning {
+animation: flash-critical 0.5s ease-in-out infinite !important;
+}
+
+.critical-warning .stat-label {
+color: #450a0a !important; /* لون داكن للعنوان وقت الوميض */
+font-weight: 800 !important;
+}
+
+.critical-warning .stat-value {
+color: #ffffff !important; /* نص أبيض ليكون واضحاً على الخلفية الحمراء */
+font-weight: 900 !important;
+text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+}
+
+@keyframes flash-alert {
+    0% { background-color: #fee2e2; color: #b91c1c; transform: scale(1); }
+    50% { background-color: #dc2626; color: white; transform: scale(1.03); box-shadow: 0 0 18px rgba(220, 38, 38, 0.9); }
+    100% { background-color: #fee2e2; color: #b91c1c; transform: scale(1); }
+}
+
+.danger-flash {
+    animation: flash-alert 0.4s infinite !important;
+    border: 2px solid #991b1b !important;
+    border-radius: 12px;
+}
+
+
+.hole-card {
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    margin-bottom: 16px;
+    transition: transform 0.2s;
+}
+
+.normal-state {
+    background-color: #fff1f2;
+    border: 1px solid #fda4af;
+    color: #1e293b;
+}
+
+.safe-state {
+    background-color: #d1fae5;
+    border: 1px solid #34d399;
+    color: #065f46;
+}
+
+@keyframes flash-alert {
+    0% { background-color: #fee2e2; color: #b91c1c; transform: scale(1); box-shadow: none; }
+    50% { background-color: #dc2626; color: #ffffff; transform: scale(1.03); box-shadow: 0 0 20px rgba(220, 38, 38, 0.9); }
+    100% { background-color: #fee2e2; color: #b91c1c; transform: scale(1); box-shadow: none; }
+}
+
+.danger-flash {
+    animation: flash-alert 0.4s infinite;
+    border: 2px solid #991b1b;
+}
