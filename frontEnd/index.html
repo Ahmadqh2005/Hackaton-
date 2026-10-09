@@ -319,9 +319,31 @@
             border-radius: 8px;
             margin-top: 6px;
         }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(8px);
+            z-index: 9999; display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: #fff; font-size: 1.2rem; font-weight: 700; gap: 15px;
+            transition: opacity 0.5s;
+        }
+        .spinner {
+            width: 45px; height: 45px; border: 4px solid rgba(255,255,255,0.2);
+            border-top: 4px solid #3b82f6; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">جاري سحب مسار الشارع الفعلي من الأقمار الصناعية...</div>
+    </div>
 
     <div class="dashboard-panel">
         <div class="header-badge">
@@ -335,7 +357,7 @@
 
         <div class="road-indicator">
             <span>📍</span>
-            <span>طريق مطار الملكة علياء الدولي (شارع المطار)، عمان</span>
+            <span>طريق مطار الملكة علياء الدولي (مقطع قصير)</span>
         </div>
 
         <div class="stats-grid">
@@ -358,15 +380,17 @@
                 <span>بداية المسار (0)</span>
                 <span>نهاية المسار (900)</span>
             </div>
-            <input type="range" id="frame-slider" min="0" max="900" value="0">
+            <!-- Disabled initially -->
+            <input type="range" id="frame-slider" min="0" max="900" value="0" disabled>
         </div>
 
         <div class="controls-row">
-            <button class="btn-main" id="play-btn">
+            <!-- Disabled initially -->
+            <button class="btn-main" id="play-btn" disabled>
                 <span id="play-icon">▶️</span>
                 <span id="play-text">تشغيل المحاكاة</span>
             </button>
-            <button class="btn-sec" id="reset-btn" title="إعادة للبداية">↺</button>
+            <button class="btn-sec" id="reset-btn" title="إعادة للبداية" disabled>↺</button>
         </div>
 
         <div class="pothole-badge">
@@ -380,18 +404,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // 1. مسار شارع المطار في عمان (Queen Alia Airport Highway)
-        // من منطقة تقاطع الدوار السابع / مدخل طريق المطار نزولاً باتجاه المطار وجامعة الإسراء
-        const airportRoute = [
-            [31.8985, 35.8722], // بداية طريق المطار (قرب نفق السابع / مرج الحمام)
-            [31.8741, 35.8756], // ممر وزارة الخارجية ومنطقة إيفرجرين
-            [31.8480, 35.8789], // جسر مادبا / شارع المطار
-            [31.8210, 35.8795], // قرب جامعة البترا
-            [31.7890, 35.8820], // منتزه عمان القومي
-            [31.7580, 35.8980], // قرب جسر المطار القديم
-            [31.7250, 35.9860]  // مدخل مطار الملكة علياء الدولي
-        ];
-
         const totalFrames = 900;
         const slider = document.getElementById('frame-slider');
         const playBtn = document.getElementById('play-btn');
@@ -403,84 +415,115 @@
         const distVal = document.getElementById('dist-val');
         const potholeCountEl = document.getElementById('pothole-count');
 
-        // 2. تهيئة الخريطة وتوسيطها على شارع المطار
+        // Dynamic route variables
+        let airportRoute = [];
+        let cumulativeDistances = [0];
+        let totalHighwayDistance = 0;
+        let plannedPolyline, traveledPolyline, carMarker;
+
+        // NEW: Shortened Start and End Points based on the provided image
+        // Point A: Near 'Am Al-Kundam' exit on Airport Road
+        const pointA = [31.8680, 35.8820]; 
+        // Point B: Near 'Al-Qastal' / Highway 15 intersection
+        const pointB = [31.7820, 35.9320];
+
+        // Initialize Map
         const map = L.map('map', {
             zoomControl: false
-        }).setView([31.8300, 35.8800], 12);
+        }).setView([31.8250, 35.9070], 13); // Centered between the new points
 
-        // إضافة أزرار التحكم بالزوم أسفل اليسار لعدم التعارض مع لوحة التحكم
+        // Add zoom control to bottom left
         L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-        // استخدام OpenStreetMap القياسي بنسبة 100% بدون أي API Key لتجنب مشكلة الـ Watermark
+        // Standard OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             subdomains: ['a', 'b', 'c'],
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // 3. حساب المسافات التراكمية على طول مسار الطريق
-        let cumulativeDistances = [0];
-        let totalHighwayDistance = 0;
+        async function fetchRealRouteGeometry() {
+            try {
+                // Fetch route from OSRM
+                const url = `https://router.project-osrm.org/route/v1/driving/${pointA[1]},${pointA[0]};${pointB[1]},${pointB[0]}?overview=full&geometries=geojson`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Convert [lng, lat] to [lat, lng]
+                airportRoute = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                
+                setupMapElements();
+                
+                // Hide loading screen and enable controls
+                const loadingScreen = document.getElementById('loading-screen');
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.style.display = 'none', 500);
+                
+                slider.disabled = false;
+                playBtn.disabled = false;
+                resetBtn.disabled = false;
 
-        for (let i = 0; i < airportRoute.length - 1; i++) {
-            const segDist = map.distance(airportRoute[i], airportRoute[i + 1]);
-            totalHighwayDistance += segDist;
-            cumulativeDistances.push(totalHighwayDistance);
+            } catch (error) {
+                console.error("Error fetching route:", error);
+                document.getElementById('loading-text').innerText = '❌ فشل الاتصال بخادم الخرائط. يرجى تحديث الصفحة.';
+                document.querySelector('.spinner').style.display = 'none';
+            }
         }
 
-        // المسار الكلي المخطط (خط أزرق داكن متقطع)
-        const plannedPolyline = L.polyline(airportRoute, {
-            color: '#64748b',
-            weight: 6,
-            dashArray: '8, 10',
-            opacity: 0.7
-        }).addTo(map);
+        function setupMapElements() {
+            // Calculate distances between points
+            for (let i = 0; i < airportRoute.length - 1; i++) {
+                const segDist = map.distance(airportRoute[i], airportRoute[i + 1]);
+                totalHighwayDistance += segDist;
+                cumulativeDistances.push(totalHighwayDistance);
+            }
 
-        // المسار المقطوع الفعلي (خط أزرق لامع)
-        const traveledPolyline = L.polyline([], {
-            color: '#2563eb',
-            weight: 7,
-            opacity: 0.95,
-            lineCap: 'round'
-        }).addTo(map);
+            // Draw planned route (dashed)
+            plannedPolyline = L.polyline(airportRoute, {
+                color: '#64748b', weight: 6, dashArray: '8, 10', opacity: 0.7
+            }).addTo(map);
 
-        // علامة بداية المسار (عمان)
-        L.circleMarker(airportRoute[0], {
-            radius: 8,
-            fillColor: '#10b981',
-            color: '#ffffff',
-            weight: 3,
-            fillOpacity: 1
-        }).addTo(map).bindPopup("<b>نقطة البداية</b><br>شارع المطار - مدخل عمان");
+            // Draw traveled route (solid, initially just start point)
+            traveledPolyline = L.polyline([airportRoute[0]], {
+                color: '#2563eb', weight: 7, opacity: 0.95, lineCap: 'round'
+            }).addTo(map);
 
-        // علامة نهاية المسار (مطار الملكة علياء)
-        L.circleMarker(airportRoute[airportRoute.length - 1], {
-            radius: 8,
-            fillColor: '#ef4444',
-            color: '#ffffff',
-            weight: 3,
-            fillOpacity: 1
-        }).addTo(map).bindPopup("<b>نقطة النهاية</b><br>مطار الملكة علياء الدولي ✈️");
+            // Start marker
+            L.circleMarker(airportRoute[0], {
+                radius: 8, fillColor: '#10b981', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map).bindPopup("<b>نقطة البداية (مقطع قصير)</b>");
 
-        // أيقونة المركبة
-        const carIcon = L.divIcon({
-            html: `
-                <div class="car-marker-container">
-                    <div class="car-pulse"></div>
-                    <div class="car-icon-body" id="car-rotator">🚘</div>
-                </div>
-            `,
-            className: 'car-icon-wrapper',
-            iconSize: [38, 38],
-            iconAnchor: [19, 19]
-        });
+            // End marker
+            L.circleMarker(airportRoute[airportRoute.length - 1], {
+                radius: 8, fillColor: '#ef4444', color: '#ffffff', weight: 3, fillOpacity: 1
+            }).addTo(map).bindPopup("<b>نقطة النهاية (مقطع قصير)</b>");
 
-        const carMarker = L.marker(airportRoute[0], {
-            icon: carIcon,
-            zIndexOffset: 2000
-        }).addTo(map);
+            // Car marker icon setup
+            const carIcon = L.divIcon({
+                html: `
+                    <div class="car-marker-container">
+                        <div class="car-pulse"></div>
+                        <div class="car-icon-body" id="car-rotator">🚘</div>
+                    </div>
+                `,
+                className: 'car-icon-wrapper',
+                iconSize: [38, 38],
+                iconAnchor: [19, 19]
+            });
+
+            // Add car marker
+            carMarker = L.marker(airportRoute[0], { icon: carIcon, zIndexOffset: 2000 }).addTo(map);
+            
+            // Fit map to show the whole route
+            map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
+            
+            // Initial update
+            updateSimulation(0);
+        }
 
         function getPositionAtProgress(progress) {
+            if (!airportRoute.length) return { position: pointA, path: [] };
+            
             const targetDist = progress * totalHighwayDistance;
 
             for (let i = 0; i < cumulativeDistances.length - 1; i++) {
@@ -495,41 +538,42 @@
                     const lat = p1[0] + segmentRatio * (p2[0] - p1[0]);
                     const lng = p1[1] + segmentRatio * (p2[1] - p1[1]);
 
-                    // إرجاع النقطة والمسار المقطوع حتى هذه النقطة
                     const pathSoFar = airportRoute.slice(0, i + 1);
                     pathSoFar.push([lat, lng]);
 
                     return { position: [lat, lng], path: pathSoFar };
                 }
             }
-
-            return {
-                position: airportRoute[airportRoute.length - 1],
-                path: airportRoute
-            };
+            return { position: airportRoute[airportRoute.length - 1], path: airportRoute };
         }
 
-        // دالة تحديث حالة المحاكاة
         function updateSimulation(frame) {
+            if (!airportRoute.length) return;
+
             const safeFrame = Math.max(0, Math.min(frame, totalFrames));
             const progress = safeFrame / totalFrames;
 
             const { position, path } = getPositionAtProgress(progress);
 
-            // تحديث موقع السيارة ومسار التقدم
+            // Update car position and trace line
             carMarker.setLatLng(position);
             traveledPolyline.setLatLngs(path);
+            
+            // Follow car if playing
+            if (timer) {
+                map.panTo(position, { animate: true, duration: 0.1 });
+            }
 
             const distanceCovered = progress * totalHighwayDistance;
             const percent = Math.round(progress * 100);
 
-            // تحديث البطاقات الإحصائية
+            // Update dashboard stats
             frameVal.innerText = `${safeFrame} / ${totalFrames}`;
             percentVal.innerText = `${percent}%`;
             distVal.innerText = `${Math.round(distanceCovered).toLocaleString()} م / ${Math.round(totalHighwayDistance).toLocaleString()} م`;
         }
 
-        // تحريك المؤشر اليدوي
+        // Handle slider manual input
         slider.addEventListener('input', function() {
             updateSimulation(parseInt(this.value, 10));
         });
@@ -538,12 +582,14 @@
 
         function togglePlay() {
             if (timer) {
+                // Pause
                 clearInterval(timer);
                 timer = null;
                 playIcon.innerText = "▶️";
                 playText.innerText = "تشغيل المحاكاة";
                 playBtn.style.background = "linear-gradient(135deg, #2563eb, #1d4ed8)";
             } else {
+                // Play
                 playIcon.innerText = "⏸️";
                 playText.innerText = "إيقاف مؤقت";
                 playBtn.style.background = "linear-gradient(135deg, #d97706, #b45309)";
@@ -551,13 +597,14 @@
                 timer = setInterval(() => {
                     let cur = parseInt(slider.value, 10);
                     if (cur >= totalFrames) {
-                        cur = 0;
+                        cur = 0; // Restart if at end
                     } else {
-                        cur = Math.min(totalFrames, cur + 3);
+                        cur = Math.min(totalFrames, cur + 3); // Advance frames
                     }
                     slider.value = cur;
                     updateSimulation(cur);
 
+                    // Auto pause at end
                     if (cur >= totalFrames) {
                         togglePlay();
                     }
@@ -571,7 +618,9 @@
             if (timer) togglePlay();
             slider.value = 0;
             updateSimulation(0);
-            map.flyTo([31.8300, 35.8800], 12);
+            if (plannedPolyline) {
+                map.fitBounds(plannedPolyline.getBounds(), { padding: [40, 40] });
+            }
         });
 
         async function loadBackendPotholes() {
@@ -585,14 +634,14 @@
                     renderPotholeMarkers(result.data);
                 }
             } catch (err) {
-                console.warn('Backend API not reachable directly, using realistic simulated potholes:', err);
-                // بيانات افتراضية متطابقة مع شارع المطار
+                console.warn('Backend API not reachable directly, using realistic simulated potholes for the short segment:', err);
+                // Adjusted dummy data to fall within the new shorter segment
                 const fallbackPotholes = [
                     {
                         id: "ANO-3426-456",
-                        address: "شارع المطار، قرب جامعة البترا",
-                        lat: 31.8210,
-                        lng: 35.8795,
+                        address: "شارع المطار، بعد تقاطع أم العمد",
+                        lat: 31.8350,
+                        lng: 35.9010,
                         severity: "Severe",
                         incidentType: "Pothole",
                         status: "Ongoing",
@@ -600,9 +649,9 @@
                     },
                     {
                         id: "ANO-3426-457",
-                        address: "شارع المطار، جسر مادبا",
-                        lat: 31.8480,
-                        lng: 35.8789,
+                        address: "شارع المطار، قبل القسطل",
+                        lat: 31.8020,
+                        lng: 35.9200,
                         severity: "Moderate",
                         incidentType: "Road Crack",
                         status: "In Progress",
@@ -637,8 +686,8 @@
             });
         }
 
-        // تشغيل التهيئة المبدئية
-        updateSimulation(0);
+        // Start initialization on load
+        fetchRealRouteGeometry();
         loadBackendPotholes();
     </script>
 </body>
